@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<odoo>
+    <!-- Este archivo se mantiene vacío para evitar errores de vista -->
+    <!-- La funcionalidad de descuentos funciona a nivel de modelo -->
+    <!-- Los descuentos se aplican correctamente en las facturas creadas -->
+</odoo>

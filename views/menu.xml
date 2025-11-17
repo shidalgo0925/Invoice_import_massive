@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<odoo>
+    
+    <!-- Menú principal -->
+    <menuitem id="menu_invoice_import_massive_root"
+              name="Importación Masiva de Facturas"
+              sequence="15"
+              web_icon="invoice_import_massive,static/description/icon.png"/>
+
+    <!-- Botón "Cargar Factura" -->
+    <menuitem id="menu_invoice_import_cargar"
+              name="Cargar Factura"
+              parent="menu_invoice_import_massive_root"
+              action="action_invoice_import_wizard"
+              sequence="1"/>
+
+    <!-- Submenú: Importaciones -->
+    <menuitem id="menu_invoice_import_list"
+              name="Importaciones"
+              parent="menu_invoice_import_massive_root"
+              action="action_invoice_import"
+              sequence="2"/>
+
+</odoo>

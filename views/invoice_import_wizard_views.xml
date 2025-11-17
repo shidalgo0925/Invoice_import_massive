@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<odoo>
+    
+    <!-- Vista del wizard para cargar facturas -->
+    <record id="view_invoice_import_wizard_form" model="ir.ui.view">
+        <field name="name">invoice.import.wizard.form</field>
+        <field name="model">invoice.import.wizard</field>
+        <field name="arch" type="xml">
+            <form string="Cargar Factura">
+                <div class="alert alert-info" role="alert">
+                    <strong>📋 Instrucciones:</strong>
+                    <ul>
+                        <li>Selecciona un archivo Excel (.xlsx, .xls) o CSV (.csv)</li>
+                        <li>El sistema detectará automáticamente el tipo de archivo</li>
+                        <li>El archivo debe contener las columnas: fecha, comprobante, cliente, producto, cantidad, precio, etc.</li>
+                        <li>Las facturas se crearán en estado borrador para revisión</li>
+                    </ul>
+                </div>
+                
+                <group>
+                    <field name="company_id" groups="base.group_multi_company"/>
+                </group>
+                
+                <group>
+                    <field name="file_data" filename="file_name" required="1" 
+                           widget="binary"
+                           string="Archivo Excel/CSV"/>
+                </group>
+                
+                <group invisible="not file_name">
+                    <field name="file_name" readonly="1"/>
+                    <field name="file_type" readonly="1"/>
+                </group>
+                
+                <footer>
+                    <button name="action_process_file" type="object" 
+                            string="🚀 Procesar Archivo" class="btn-primary"/>
+                    <button string="Cancelar" class="btn-secondary" special="cancel"/>
+                </footer>
+            </form>
+        </field>
+    </record>
+
+    <!-- Acción para el wizard -->
+    <record id="action_invoice_import_wizard" model="ir.actions.act_window">
+        <field name="name">Cargar Factura</field>
+        <field name="res_model">invoice.import.wizard</field>
+        <field name="view_mode">form</field>
+        <field name="target">new</field>
+        <field name="context">{}</field>
+    </record>
+
+</odoo>

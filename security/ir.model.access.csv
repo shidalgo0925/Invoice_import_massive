@@ -1,0 +1,7 @@
+id,name,model_id:id,group_id:id,perm_read,perm_write,perm_create,perm_unlink
+access_invoice_import_user,invoice.import.user,model_invoice_import,account.group_account_user,1,1,1,1
+access_invoice_import_line_user,invoice.import.line.user,model_invoice_import_line,account.group_account_user,1,1,1,1
+access_invoice_import_wizard_user,invoice.import.wizard.user,model_invoice_import_wizard,account.group_account_user,1,1,1,1
+access_invoice_import_manager,invoice.import.manager,model_invoice_import,account.group_account_manager,1,1,1,1
+access_invoice_import_line_manager,invoice.import.line.manager,model_invoice_import_line,account.group_account_manager,1,1,1,1
+access_invoice_import_wizard_manager,invoice.import.wizard.manager,model_invoice_import_wizard,account.group_account_manager,1,1,1,1

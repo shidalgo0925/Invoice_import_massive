@@ -1,0 +1,220 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<odoo>
+    
+    <!-- Vista de lista para Importaciones -->
+    <record id="view_invoice_import_tree" model="ir.ui.view">
+        <field name="name">invoice.import.tree</field>
+        <field name="model">invoice.import</field>
+        <field name="arch" type="xml">
+            <list string="Importaciones de Facturas" decoration-info="state=='draft'" decoration-success="state=='imported'" decoration-danger="state=='error'">
+                <field name="name"/>
+                <field name="file_name"/>
+                <field name="file_type"/>
+                <field name="state" widget="badge"/>
+                            <field name="total_lines"/>
+                            <field name="imported_lines"/>
+                            <field name="error_lines"/>
+                            <field name="total_discount_amount"/>
+                            <field name="total_discount_percentage"/>
+                            <field name="import_date"/>
+                <field name="company_id" groups="base.group_multi_company"/>
+            </list>
+        </field>
+    </record>
+
+    <!-- Vista de formulario para Importaciones -->
+    <record id="view_invoice_import_form" model="ir.ui.view">
+        <field name="name">invoice.import.form</field>
+        <field name="model">invoice.import</field>
+        <field name="arch" type="xml">
+            <form string="Importación de Facturas">
+                <header>
+                    <button name="action_reset" type="object" string="Resetear" class="btn-secondary" 
+                            invisible="state != 'error'"/>
+                    <field name="state" widget="statusbar" statusbar_visible="draft,validated,imported"/>
+                </header>
+                
+                <sheet>
+                    <div class="oe_title">
+                        <h1>
+                            <field name="name" readonly="1"/>
+                        </h1>
+                    </div>
+                    
+                    <group>
+                        <group>
+                            <field name="file_name" readonly="1"/>
+                            <field name="file_type" readonly="1"/>
+                            <field name="company_id" groups="base.group_multi_company"/>
+                        </group>
+                        <group>
+                            <field name="total_lines" readonly="1"/>
+                            <field name="imported_lines" readonly="1"/>
+                            <field name="error_lines" readonly="1"/>
+                            <field name="total_discount_amount" readonly="1"/>
+                            <field name="total_discount_percentage" readonly="1"/>
+                            <field name="import_date" readonly="1"/>
+                        </group>
+                    </group>
+                    
+                    <notebook>
+                        <page string="Líneas de Importación" name="lines">
+                            <field name="import_line_ids" readonly="1">
+                                <list string="Líneas" decoration-info="state=='draft'" decoration-success="state=='imported'" decoration-danger="state=='error'">
+                                    <field name="line_number"/>
+                                    <field name="fecha"/>
+                                    <field name="comprobante"/>
+                                    <field name="nombre_cliente"/>
+                                    <field name="nombre_articulo"/>
+                                    <field name="quantity"/>
+                                    <field name="precio"/>
+                                    <field name="descuento"/>
+                                    <field name="descuento_porcentaje"/>
+                                    <field name="descuento_aplicado"/>
+                                    <field name="monto_descuento_aplicado"/>
+                                    <field name="subtotal_descuento"/>
+                                    <field name="total"/>
+                                    <field name="state" widget="badge"/>
+                                    <field name="partner_id"/>
+                                    <field name="product_id"/>
+                                    <field name="invoice_id"/>
+                                    <button name="action_view_invoice" type="object" string="Ver Factura" 
+                                            invisible="not invoice_id" class="btn-primary"/>
+                                    <button name="action_verify_discount" type="object" string="Verificar Descuento" 
+                                            invisible="not invoice_id" class="btn-info"/>
+                                    <button name="action_update_invoice_discount" type="object" string="Actualizar Descuento" 
+                                            invisible="not invoice_id" class="btn-warning"/>
+                                    <button name="action_debug_discount" type="object" string="Depurar Descuento" 
+                                            invisible="not invoice_id" class="btn-secondary"/>
+                                </list>
+                            </field>
+                        </page>
+                        
+                        <page string="Errores" name="errors" invisible="not error_message">
+                            <field name="error_message" readonly="1" nolabel="1"/>
+                        </page>
+                    </notebook>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <!-- Vista de búsqueda para Importaciones -->
+    <record id="view_invoice_import_search" model="ir.ui.view">
+        <field name="name">invoice.import.search</field>
+        <field name="model">invoice.import</field>
+        <field name="arch" type="xml">
+            <search string="Buscar Importaciones">
+                <field name="name"/>
+                <field name="file_name"/>
+                <field name="state"/>
+                <field name="company_id" groups="base.group_multi_company"/>
+                <filter string="Borrador" name="draft" domain="[('state', '=', 'draft')]"/>
+                <filter string="Validado" name="validated" domain="[('state', '=', 'validated')]"/>
+                <filter string="Importado" name="imported" domain="[('state', '=', 'imported')]"/>
+                <filter string="Error" name="error" domain="[('state', '=', 'error')]"/>
+                <group expand="0" string="Agrupar por">
+                    <filter string="Estado" name="group_state" context="{'group_by': 'state'}"/>
+                    <filter string="Compañía" name="group_company" context="{'group_by': 'company_id'}" groups="base.group_multi_company"/>
+                </group>
+            </search>
+        </field>
+    </record>
+
+    <!-- Acción para Importaciones -->
+    <record id="action_invoice_import" model="ir.actions.act_window">
+        <field name="name">Importaciones de Facturas</field>
+        <field name="res_model">invoice.import</field>
+        <field name="view_mode">list,form</field>
+        <field name="context">{'search_default_draft': 1}</field>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">
+                ¡Crea tu primera importación de facturas!
+            </p>
+            <p>
+                Utiliza el botón "Cargar Factura" para importar facturas desde un archivo Excel.
+            </p>
+        </field>
+    </record>
+
+    <!-- Vista detallada para líneas de importación -->
+    <record id="view_invoice_import_line_form" model="ir.ui.view">
+        <field name="name">invoice.import.line.form</field>
+        <field name="model">invoice.import.line</field>
+        <field name="arch" type="xml">
+            <form string="Línea de Importación">
+                <sheet>
+                    <group>
+                        <group>
+                            <field name="line_number"/>
+                            <field name="fecha"/>
+                            <field name="comprobante"/>
+                            <field name="n_interno"/>
+                            <field name="n_fiscal"/>
+                            <field name="state" widget="badge"/>
+                        </group>
+                        <group>
+                            <field name="partner_id"/>
+                            <field name="product_id"/>
+                            <field name="invoice_id"/>
+                            <button name="action_view_invoice" type="object" string="Ver Factura" 
+                                    invisible="not invoice_id" class="btn-primary"/>
+                            <button name="action_verify_discount" type="object" string="Verificar Descuento" 
+                                    invisible="not invoice_id" class="btn-info"/>
+                            <button name="action_update_invoice_discount" type="object" string="Actualizar Descuento" 
+                                    invisible="not invoice_id" class="btn-warning"/>
+                            <button name="action_debug_discount" type="object" string="Depurar Descuento" 
+                                    invisible="not invoice_id" class="btn-secondary"/>
+                        </group>
+                    </group>
+                    
+                    <group>
+                        <group string="Cliente">
+                            <field name="cliente_codigo"/>
+                            <field name="nombre_cliente"/>
+                            <field name="razon_social"/>
+                            <field name="tipo_identificacion"/>
+                            <field name="identificacion"/>
+                            <field name="sucursal"/>
+                            <field name="vendedor"/>
+                        </group>
+                        <group string="Producto">
+                            <field name="codigo_articulo"/>
+                            <field name="nombre_articulo"/>
+                            <field name="referencia"/>
+                            <field name="codigo_barra"/>
+                            <field name="proveedor"/>
+                        </group>
+                    </group>
+                    
+                    <group>
+                        <group string="Precios y Cantidades">
+                            <field name="quantity"/>
+                            <field name="precio"/>
+                            <field name="total"/>
+                        </group>
+                        <group string="Descuentos">
+                            <field name="descuento"/>
+                            <field name="descuento_porcentaje"/>
+                            <field name="descuento_aplicado"/>
+                            <field name="monto_descuento_aplicado"/>
+                            <field name="subtotal_descuento"/>
+                        </group>
+                    </group>
+                    
+                    <group>
+                        <group string="Impuestos">
+                            <field name="impuesto"/>
+                            <field name="impuesto_2"/>
+                        </group>
+                        <group string="Otros">
+                            <field name="comentario"/>
+                            <field name="error_message" invisible="not error_message"/>
+                        </group>
+                    </group>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+</odoo>
