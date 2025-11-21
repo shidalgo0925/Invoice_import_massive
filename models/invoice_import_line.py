@@ -70,25 +70,30 @@ class InvoiceImportLine(models.Model):
     def _compute_subtotal_descuento(self):
         """Calcular el subtotal con descuento"""
         for line in self:
+            # Los valores ya vienen positivos (convertidos en el wizard si es NCR)
             subtotal = line.quantity * line.precio
             
-            # Calcular descuento por monto o porcentaje
+            # Calcular descuento por monto o porcentaje (todos los valores son positivos)
             descuento_por_monto = 0.0
-            if line.descuento > 0:
-                # Usar monto del descuento directamente
+            
+            if line.descuento and line.descuento > 0.0:
+                # Usar monto del descuento directamente (ya viene positivo)
                 descuento_por_monto = line.descuento
-            elif line.descuento_porcentaje > 0:
-                # Calcular monto basado en porcentaje
+            elif line.descuento_porcentaje and line.descuento_porcentaje > 0.0:
+                # Calcular monto basado en porcentaje (ya viene positivo)
                 descuento_por_monto = subtotal * (line.descuento_porcentaje / 100)
             
+            # Aplicar el descuento (todos los valores son positivos)
             line.subtotal_descuento = subtotal - descuento_por_monto
     
     @api.depends('quantity', 'precio', 'descuento_aplicado')
     def _compute_monto_descuento_aplicado(self):
         """Calcular el monto del descuento aplicado"""
         for line in self:
-            if line.descuento_aplicado > 0:
-                subtotal = abs(line.quantity) * abs(line.precio)
+            # Los valores ya vienen positivos (convertidos en el wizard si es NCR)
+            if line.descuento_aplicado and line.descuento_aplicado > 0.0:
+                subtotal = line.quantity * line.precio
+                # Calcular el monto del descuento (todos los valores son positivos)
                 line.monto_descuento_aplicado = subtotal * (line.descuento_aplicado / 100)
             else:
                 line.monto_descuento_aplicado = 0.0
@@ -243,36 +248,62 @@ class InvoiceImportLine(models.Model):
                 raise UserError(_('No se encontró un diario de ventas configurado'))
             
             # Determinar el tipo de documento
+            # IMPORTANTE: Los valores ya vienen convertidos a positivos desde el wizard si es NCR
             move_type = 'out_invoice'  # Factura por defecto
             
-            # Detectar si es una nota de crédito
-            if (self.comprobante and 'nota' in self.comprobante.lower() and 'credito' in self.comprobante.lower()) or \
-               (self.comprobante and 'ncr' in self.comprobante.lower()) or \
-               (self.quantity < 0) or \
-               (self.total < 0):
-                move_type = 'out_refund'  # Nota de crédito
+            # Detectar si es una nota de crédito usando el campo comprobante
+            # Si el comprobante NO es "Factura", entonces es NCR
+            if self.comprobante:
+                comprobante_lower = self.comprobante.lower()
+                # Normalizar: quitar tildes para comparar
+                comprobante_normalized = comprobante_lower.replace('é', 'e').replace('É', 'e')
+                # Si NO contiene "factura", entonces es NCR
+                if 'factura' not in comprobante_normalized:
+                    move_type = 'out_refund'  # Nota de crédito (código interno para NCR)
             
-            # Ajustar cantidades para notas de crédito
-            quantity = abs(self.quantity)  # Siempre usar cantidad positiva
-            price_unit = abs(self.precio)  # Siempre usar precio positivo
+            # Los valores ya están en positivo (convertidos en el wizard si es NCR)
+            quantity = self.quantity  # Ya viene positivo del wizard
+            price_unit = self.precio  # Ya viene positivo del wizard
             
             # Calcular el descuento a aplicar
+            # IMPORTANTE: Todos los valores ya están en positivo (convertidos en el wizard)
+            # El descuento ya viene positivo si es NCR, así que trabajamos igual para facturas y NCR
             discount_percentage = 0.0
-            if self.descuento > 0 and quantity * price_unit > 0:
-                # Calcular porcentaje basado en el monto del descuento
-                discount_percentage = (abs(self.descuento) / (quantity * price_unit)) * 100
-            elif self.descuento_porcentaje > 0:
-                # Usar descuento por porcentaje si está definido
-                discount_percentage = abs(self.descuento_porcentaje)
+            subtotal_base = quantity * price_unit
+            
+            # Calcular el porcentaje de descuento
+            if subtotal_base != 0.0:
+                # Si hay monto de descuento, calcular el porcentaje
+                if self.descuento and self.descuento > 0.0:
+                    # Calcular porcentaje basado en el monto del descuento (ya está positivo)
+                    discount_percentage = (self.descuento / subtotal_base) * 100
+                # Si no hay monto pero hay porcentaje, usar el porcentaje directamente
+                elif self.descuento_porcentaje and self.descuento_porcentaje > 0.0:
+                    # El porcentaje ya viene positivo (convertido en el wizard si es NCR)
+                    discount_percentage = self.descuento_porcentaje
+            
+            # IMPORTANTE: Guardar el porcentaje calculado ANTES de crear la factura
+            # Esto permite que los campos computados puedan usar el porcentaje
+            if discount_percentage > 0.0:
+                # Guardar el porcentaje calculado
+                self.descuento_porcentaje = discount_percentage
+                self.descuento_aplicado = discount_percentage
             
             # Usar la cuenta contable del Excel (campo cuenta)
             account_id = None
             if self.cuenta:
                 # Buscar la cuenta contable por código
+                # Intentar primero con el campo code directamente
                 account = self.env['account.account'].search([
-                    ('code_store->>1', '=', self.cuenta),
+                    ('code', '=', self.cuenta),
                     ('company_id', '=', self.company_id.id)
                 ], limit=1)
+                # Si no se encuentra, intentar con code_store (formato JSON en Odoo 18)
+                if not account:
+                    account = self.env['account.account'].search([
+                        ('code_store->>1', '=', self.cuenta),
+                        ('company_id', '=', self.company_id.id)
+                    ], limit=1)
                 if account:
                     account_id = account.id
                 else:
@@ -317,11 +348,11 @@ class InvoiceImportLine(models.Model):
                 line._compute_price_subtotal()
                 line._compute_price_total()
             
-            # Actualizar la línea
+            # Actualizar la línea con la factura creada
+            # El porcentaje ya se guardó antes de crear la factura
             self.write({
                 'invoice_id': invoice.id,
-                'state': 'imported',
-                'descuento_aplicado': discount_percentage
+                'state': 'imported'
             })
             
             return invoice

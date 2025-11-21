@@ -1,6 +1,6 @@
 {
     "name": "Importación Masiva de Facturas",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "category": "Accounting",
     "summary": "Importación masiva de facturas desde Excel/CSV con validación automática",
     "description": """

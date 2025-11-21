@@ -239,10 +239,44 @@ class InvoiceImportWizard(models.TransientModel):
             except:
                 return default
         
+        # Leer valores del Excel
+        comprobante = str(clean_value(row.get('comprobante', '')))
+        quantity_raw = clean_quantity(row.get('cantidad', 1.0), 1.0)
+        precio_raw = clean_float(row.get('precio', 0.0))
+        descuento_raw = clean_float(row.get('descuento', 0.0))
+        descuento_porcentaje_raw = clean_float(row.get('descuento_porcentaje', 0.0))
+        total_raw = clean_float(row.get('total', 0.0))
+        
+        # Detectar si es NCR (Nota de Crédito) usando el campo comprobante
+        # Si el comprobante NO es "Factura", entonces es NCR
+        is_ncr = False
+        if comprobante:
+            comprobante_lower = comprobante.lower()
+            # Normalizar: quitar tildes para comparar
+            comprobante_normalized = comprobante_lower.replace('é', 'e').replace('É', 'e')
+            # Si NO contiene "factura", entonces es NCR
+            if 'factura' not in comprobante_normalized:
+                is_ncr = True
+        
+        # Si es NCR, convertir todos los valores a positivos (Odoo maneja NCR con valores positivos)
+        # El indicador interno será move_type = 'out_refund'
+        if is_ncr:
+            quantity = abs(quantity_raw)
+            precio = abs(precio_raw)
+            descuento = abs(descuento_raw)
+            descuento_porcentaje = abs(descuento_porcentaje_raw) if descuento_porcentaje_raw else 0.0
+            total = abs(total_raw)
+        else:
+            quantity = quantity_raw
+            precio = precio_raw
+            descuento = descuento_raw
+            descuento_porcentaje = descuento_porcentaje_raw
+            total = total_raw
+        
         return {
             'line_number': line_number,
             'fecha': clean_date(row.get('fecha', '')),
-            'comprobante': str(clean_value(row.get('comprobante', ''))),
+            'comprobante': comprobante,
             'n_interno': str(clean_value(row.get('n_interno', ''))),
             'n_fiscal': str(clean_value(row.get('n_fiscal', ''))),
             'cliente_codigo': str(clean_value(row.get('cliente_codigo', ''))),
@@ -258,14 +292,14 @@ class InvoiceImportWizard(models.TransientModel):
             'codigo_barra': str(clean_value(row.get('codigo_barra', ''))),
             'proveedor': str(clean_value(row.get('proveedor', ''))),
             'cuenta': str(clean_value(row.get('cuenta', ''))),
-            'quantity': clean_quantity(row.get('cantidad', 1.0), 1.0),
-            'precio': clean_float(row.get('precio', 0.0)),
-            'descuento': clean_float(row.get('descuento', 0.0)),
-            'descuento_porcentaje': clean_float(row.get('descuento_porcentaje', 0.0)),
+            'quantity': quantity,  # Ya convertido a positivo si es NCR
+            'precio': precio,  # Ya convertido a positivo si es NCR
+            'descuento': descuento,  # Ya convertido a positivo si es NCR
+            'descuento_porcentaje': descuento_porcentaje,  # Ya convertido a positivo si es NCR
             'subtotal_descuento': clean_float(row.get('subtotal_descuento', 0.0)),
             'impuesto': clean_float(row.get('impuesto', 0.0)),
             'impuesto_2': clean_float(row.get('impuesto_2', 0.0)),
-            'total': clean_float(row.get('total', 0.0)),
+            'total': total,  # Ya convertido a positivo si es NCR
             'comentario': str(clean_value(row.get('comentario', ''))),
             'state': 'draft'
         }
