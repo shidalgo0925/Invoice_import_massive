@@ -348,6 +348,56 @@ class InvoiceImportLine(models.Model):
                 line._compute_price_subtotal()
                 line._compute_price_total()
             
+            # Recalcular los totales después de los cambios
+            invoice._compute_amount()
+            
+            # Crear la línea de cuenta por cobrar (partida contable completa)
+            # Solo para facturas de cliente (out_invoice) y notas de crédito (out_refund)
+            if invoice.move_type in ('out_invoice', 'out_refund'):
+                # Obtener la cuenta por cobrar del partner
+                partner = invoice.partner_id.with_company(invoice.company_id)
+                receivable_account = partner.property_account_receivable_id
+                
+                # Si no tiene cuenta, usar la cuenta por defecto de la compañía
+                if not receivable_account:
+                    # Buscar cuenta por defecto del tipo asset_receivable
+                    receivable_account = self.env['account.account'].search([
+                        ('account_type', '=', 'asset_receivable'),
+                        ('company_id', '=', invoice.company_id.id),
+                        ('deprecated', '=', False)
+                    ], limit=1)
+                
+                # Verificar que la cuenta sea del tipo correcto
+                if receivable_account and receivable_account.account_type == 'asset_receivable':
+                    # Calcular el total de la factura
+                    # Para facturas de cliente, amount_total_signed es negativo (crédito)
+                    # Para notas de crédito, amount_total_signed es positivo (débito)
+                    # Necesitamos el valor absoluto del total
+                    total_amount = abs(invoice.amount_total_signed)
+                    
+                    # Obtener la fecha de vencimiento
+                    invoice_date_due = invoice.invoice_date_due or invoice.invoice_date or fields.Date.today()
+                    
+                    # Crear la línea de cuenta por cobrar
+                    # Para facturas (out_invoice): débito = total (aumenta saldo a favor del cliente)
+                    # Para notas de crédito (out_refund): crédito = total (reduce saldo a favor del cliente)
+                    receivable_line_vals = {
+                        'move_id': invoice.id,
+                        'display_type': 'payment_term',
+                        'account_id': receivable_account.id,
+                        'partner_id': invoice.partner_id.id,
+                        'debit': total_amount if invoice.move_type == 'out_invoice' else 0.0,
+                        'credit': total_amount if invoice.move_type == 'out_refund' else 0.0,
+                        'date_maturity': invoice_date_due,
+                        'name': _('Cuenta por cobrar'),
+                    }
+                    
+                    # Crear la línea
+                    self.env['account.move.line'].create(receivable_line_vals)
+                    
+                    # Recalcular los totales después de agregar la línea de cuenta por cobrar
+                    invoice._compute_amount()
+            
             # Actualizar la línea con la factura creada
             # El porcentaje ya se guardó antes de crear la factura
             self.write({
