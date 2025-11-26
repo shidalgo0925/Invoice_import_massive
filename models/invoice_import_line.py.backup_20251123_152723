@@ -1,8 +1,5 @@
 from odoo import models, fields, api, _
 from odoo.exceptions import UserError, ValidationError
-import logging
-
-_logger = logging.getLogger(__name__)
 
 
 class InvoiceImportLine(models.Model):
@@ -356,12 +353,10 @@ class InvoiceImportLine(models.Model):
             
             # Crear la línea de cuenta por cobrar (partida contable completa)
             # Solo para facturas de cliente (out_invoice) y notas de crédito (out_refund)
-            _logger.info("=== INICIO: Crear línea payment_term para factura %s ===", invoice.id)
             if invoice.move_type in ('out_invoice', 'out_refund'):
                 # Obtener la cuenta por cobrar del partner
                 partner = invoice.partner_id.with_company(invoice.company_id)
                 receivable_account = partner.property_account_receivable_id
-                _logger.info("Partner: %s, Receivable account from partner: %s", partner.name, receivable_account.id if receivable_account else 'None')
                 
                 # Si no tiene cuenta, usar la cuenta por defecto de la compañía
                 if not receivable_account:
@@ -371,16 +366,14 @@ class InvoiceImportLine(models.Model):
                         ('company_id', '=', invoice.company_id.id),
                         ('deprecated', '=', False)
                     ], limit=1)
-                    _logger.info("Receivable account from search: %s", receivable_account.id if receivable_account else 'None')
                 
                 # Verificar que la cuenta sea del tipo correcto
                 if receivable_account and receivable_account.account_type == 'asset_receivable':
-                    # Usar el total del Excel que viene del archivo (es el valor correcto)
-                    # El total del Excel ya viene en positivo si es NCR (convertido en el wizard)
-                    # Esto asegura que usamos el valor exacto del archivo, no el calculado por Odoo
-                    # que puede tener diferencias si faltan impuestos o productos
-                    total_amount = abs(self.total)
-                    _logger.info("Total del Excel (self.total): %s, Total amount calculado: %s", self.total, total_amount)
+                    # Calcular el total de la factura
+                    # Para facturas de cliente, amount_total_signed es negativo (crédito)
+                    # Para notas de crédito, amount_total_signed es positivo (débito)
+                    # Necesitamos el valor absoluto del total
+                    total_amount = abs(invoice.amount_total_signed)
                     
                     # Obtener la fecha de vencimiento
                     invoice_date_due = invoice.invoice_date_due or invoice.invoice_date or fields.Date.today()
@@ -398,27 +391,12 @@ class InvoiceImportLine(models.Model):
                         'date_maturity': invoice_date_due,
                         'name': _('Cuenta por cobrar'),
                     }
-                    _logger.info("Creando línea payment_term con valores: %s", receivable_line_vals)
                     
-                    try:
-                        # Crear la línea
-                        receivable_line = self.env['account.move.line'].create(receivable_line_vals)
-                        _logger.info("Línea payment_term creada exitosamente: ID %s", receivable_line.id)
-                        
-                        # Recalcular los totales después de agregar la línea de cuenta por cobrar
-                        invoice._compute_amount()
-                        _logger.info("Totales recalculados. amount_total: %s", invoice.amount_total)
-                    except Exception as e:
-                        _logger.error("ERROR al crear línea payment_term: %s", str(e))
-                        _logger.exception("Traceback completo:")
-                        raise
-                else:
-                    _logger.warning("No se pudo determinar la cuenta por cobrar o el tipo es incorrecto. Receivable account: %s, Account type: %s", 
-                                  receivable_account.id if receivable_account else 'None',
-                                  receivable_account.account_type if receivable_account else 'None')
-            else:
-                _logger.info("No es factura de cliente (move_type: %s), no se crea línea payment_term", invoice.move_type)
-            _logger.info("=== FIN: Crear línea payment_term para factura %s ===", invoice.id)
+                    # Crear la línea
+                    self.env['account.move.line'].create(receivable_line_vals)
+                    
+                    # Recalcular los totales después de agregar la línea de cuenta por cobrar
+                    invoice._compute_amount()
             
             # Actualizar la línea con la factura creada
             # El porcentaje ya se guardó antes de crear la factura
