@@ -161,6 +161,9 @@ class InvoiceImportWizard(models.TransientModel):
             # Limpiar el DataFrame de valores NaN
             df = df.fillna('')
             
+            # Limpiar nombres de columnas (quitar espacios y caracteres especiales)
+            df.columns = df.columns.str.strip().str.replace('\xa0', '', regex=False)
+            
             # Crear registro de importación
             import_record = self.env['invoice.import'].create({
                 'name': _('Importación %s') % fields.Date.today(),

@@ -296,17 +296,14 @@ class InvoiceImportLine(models.Model):
             # Usar la cuenta contable del Excel (campo cuenta)
             account_id = None
             if self.cuenta:
-                # Buscar la cuenta contable por código
-                # Intentar primero con el campo code directamente
+                # Buscar la cuenta contable por código (Odoo 18: sin filtro company_id)
                 account = self.env['account.account'].search([
-                    ('code', '=', self.cuenta),
-                    ('company_id', '=', self.company_id.id)
+                    ('code', '=', self.cuenta)
                 ], limit=1)
                 # Si no se encuentra, intentar con code_store (formato JSON en Odoo 18)
                 if not account:
                     account = self.env['account.account'].search([
-                        ('code_store->>1', '=', self.cuenta),
-                        ('company_id', '=', self.company_id.id)
+                        ('code_store->>1', '=', self.cuenta)
                     ], limit=1)
                 if account:
                     account_id = account.id
@@ -340,106 +337,34 @@ class InvoiceImportLine(models.Model):
                 'invoice_line_ids': [(0, 0, invoice_line_vals)]
             }
             
-            # Crear la factura
+            # Crear la factura (Odoo crea automáticamente la línea payment_term balanceada)
             invoice = self.env['account.move'].create(invoice_vals)
+            _logger.info("Factura creada: %s (ID: %s)", invoice.name, invoice.id)
             
-            # Forzar el recálculo de la factura para asegurar que el descuento se aplique
-            invoice._compute_amount()
-            invoice._compute_amount_tax()
-            
-            # Forzar el recálculo de las líneas de factura
-            for line in invoice.invoice_line_ids:
-                line._compute_price_subtotal()
-                line._compute_price_total()
-            
-            # Recalcular los totales después de los cambios
-            invoice._compute_amount()
-            
-            # Crear la línea de cuenta por cobrar (partida contable completa)
-            # Solo para facturas de cliente (out_invoice) y notas de crédito (out_refund)
-            _logger.info("=== INICIO: Crear línea payment_term para factura %s ===", invoice.id)
-            if invoice.move_type in ('out_invoice', 'out_refund'):
-                # PRIORIDAD 1: Usar cuenta CxC del Excel si está disponible
-                receivable_account = None
-                if self.cuenta_cxc:
-                    # Buscar la cuenta por código
-                    receivable_account = self.env['account.account'].search([
-                        ('code', '=', self.cuenta_cxc),
-                        ('company_id', '=', self.company_id.id)
-                    ], limit=1)
-                    # Si no se encuentra, intentar con code_store (formato JSON en Odoo 18)
-                    if not receivable_account:
-                        receivable_account = self.env['account.account'].search([
-                            ('code_store->>1', '=', self.cuenta_cxc),
-                            ('company_id', '=', self.company_id.id)
-                        ], limit=1)
-                    if receivable_account:
-                        _logger.info("Cuenta CxC del Excel encontrada: %s (código: %s)", receivable_account.id, self.cuenta_cxc)
+            # Si hay cuenta CxC del Excel, cambiar la cuenta de la línea payment_term
+            if self.cuenta_cxc and invoice.move_type in ('out_invoice', 'out_refund'):
+                _logger.info("=== Cambiando cuenta CxC a: %s ===", self.cuenta_cxc)
+                
+                # Buscar la cuenta por código (Odoo 18: sin filtro company_id)
+                new_receivable_account = self.env['account.account'].search([
+                    ('code', '=', self.cuenta_cxc)
+                ], limit=1)
+                
+                if new_receivable_account:
+                    # Buscar la línea payment_term creada por Odoo
+                    payment_term_line = invoice.line_ids.filtered(
+                        lambda l: l.display_type == 'payment_term'
+                    )
+                    
+                    if payment_term_line:
+                        # Cambiar la cuenta de la línea payment_term
+                        payment_term_line.write({'account_id': new_receivable_account.id})
+                        _logger.info("Cuenta CxC cambiada exitosamente a: %s (ID: %s)", 
+                                   self.cuenta_cxc, new_receivable_account.id)
                     else:
-                        _logger.warning("Cuenta CxC del Excel NO encontrada: %s, usando cuenta del partner", self.cuenta_cxc)
-                
-                # PRIORIDAD 2: Si no hay cuenta del Excel, obtener la cuenta por cobrar del partner
-                if not receivable_account:
-                    partner = invoice.partner_id.with_company(invoice.company_id)
-                    receivable_account = partner.property_account_receivable_id
-                    _logger.info("Partner: %s, Receivable account from partner: %s", partner.name, receivable_account.id if receivable_account else 'None')
-                
-                # PRIORIDAD 3: Si no tiene cuenta, usar la cuenta por defecto de la compañía
-                if not receivable_account:
-                    # Buscar cuenta por defecto del tipo asset_receivable
-                    receivable_account = self.env['account.account'].search([
-                        ('account_type', '=', 'asset_receivable'),
-                        ('company_id', '=', invoice.company_id.id),
-                        ('deprecated', '=', False)
-                    ], limit=1)
-                    _logger.info("Receivable account from search: %s", receivable_account.id if receivable_account else 'None')
-                
-                # Verificar que la cuenta sea del tipo correcto
-                if receivable_account and receivable_account.account_type == 'asset_receivable':
-                    # Usar el total del Excel que viene del archivo (es el valor correcto)
-                    # El total del Excel ya viene en positivo si es NCR (convertido en el wizard)
-                    # Esto asegura que usamos el valor exacto del archivo, no el calculado por Odoo
-                    # que puede tener diferencias si faltan impuestos o productos
-                    total_amount = abs(self.total)
-                    _logger.info("Total del Excel (self.total): %s, Total amount calculado: %s", self.total, total_amount)
-                    
-                    # Obtener la fecha de vencimiento
-                    invoice_date_due = invoice.invoice_date_due or invoice.invoice_date or fields.Date.today()
-                    
-                    # Crear la línea de cuenta por cobrar
-                    # Para facturas (out_invoice): débito = total (aumenta saldo a favor del cliente)
-                    # Para notas de crédito (out_refund): crédito = total (reduce saldo a favor del cliente)
-                    receivable_line_vals = {
-                        'move_id': invoice.id,
-                        'display_type': 'payment_term',
-                        'account_id': receivable_account.id,
-                        'partner_id': invoice.partner_id.id,
-                        'debit': total_amount if invoice.move_type == 'out_invoice' else 0.0,
-                        'credit': total_amount if invoice.move_type == 'out_refund' else 0.0,
-                        'date_maturity': invoice_date_due,
-                        'name': _('Cuenta por cobrar'),
-                    }
-                    _logger.info("Creando línea payment_term con valores: %s", receivable_line_vals)
-                    
-                    try:
-                        # Crear la línea
-                        receivable_line = self.env['account.move.line'].create(receivable_line_vals)
-                        _logger.info("Línea payment_term creada exitosamente: ID %s", receivable_line.id)
-                        
-                        # Recalcular los totales después de agregar la línea de cuenta por cobrar
-                        invoice._compute_amount()
-                        _logger.info("Totales recalculados. amount_total: %s", invoice.amount_total)
-                    except Exception as e:
-                        _logger.error("ERROR al crear línea payment_term: %s", str(e))
-                        _logger.exception("Traceback completo:")
-                        raise
+                        _logger.warning("No se encontró línea payment_term en la factura")
                 else:
-                    _logger.warning("No se pudo determinar la cuenta por cobrar o el tipo es incorrecto. Receivable account: %s, Account type: %s", 
-                                  receivable_account.id if receivable_account else 'None',
-                                  receivable_account.account_type if receivable_account else 'None')
-            else:
-                _logger.info("No es factura de cliente (move_type: %s), no se crea línea payment_term", invoice.move_type)
-            _logger.info("=== FIN: Crear línea payment_term para factura %s ===", invoice.id)
+                    _logger.warning("Cuenta CxC del Excel NO encontrada: %s, se mantiene la cuenta del partner", self.cuenta_cxc)
             
             # Actualizar la línea con la factura creada
             # El porcentaje ya se guardó antes de crear la factura
@@ -585,14 +510,6 @@ class InvoiceImportLine(models.Model):
         invoice_line.write({
             'discount': self.descuento_aplicado
         })
-        
-        # Forzar el recálculo de la línea de factura
-        invoice_line._compute_price_subtotal()
-        invoice_line._compute_price_total()
-        
-        # Forzar el recálculo de la factura
-        self.invoice_id._compute_amount()
-        self.invoice_id._compute_amount_tax()
         
         return {
             'type': 'ir.actions.client',
