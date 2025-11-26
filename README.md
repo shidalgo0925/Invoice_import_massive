@@ -61,7 +61,8 @@ El archivo debe contener las siguientes columnas:
 - `descuento` - Descuento (monto)
 - `descuento_porcentaje` - Descuento (%)
 - `total` - Total
-- `cuenta` - Código de cuenta contable (opcional)
+- `cuenta` - Código de cuenta contable para ingreso (opcional)
+- `cuenta_cxc` - Código de cuenta por cobrar (opcional, si no se especifica usa la del cliente)
 
 ## Autor
 

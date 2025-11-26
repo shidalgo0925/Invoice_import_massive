@@ -292,6 +292,7 @@ class InvoiceImportWizard(models.TransientModel):
             'codigo_barra': str(clean_value(row.get('codigo_barra', ''))),
             'proveedor': str(clean_value(row.get('proveedor', ''))),
             'cuenta': str(clean_value(row.get('cuenta', ''))),
+            'cuenta_cxc': str(clean_value(row.get('cuenta_cxc', ''))),
             'quantity': quantity,  # Ya convertido a positivo si es NCR
             'precio': precio,  # Ya convertido a positivo si es NCR
             'descuento': descuento,  # Ya convertido a positivo si es NCR

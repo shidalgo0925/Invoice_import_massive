@@ -40,6 +40,7 @@ class InvoiceImportLine(models.Model):
     codigo_barra = fields.Char(string='Código de Barra')
     proveedor = fields.Char(string='Proveedor')
     cuenta = fields.Char(string='Cuenta')
+    cuenta_cxc = fields.Char(string='Cuenta CxC', help='Código de cuenta por cobrar desde el Excel')
     quantity = fields.Float(string='Cantidad', default=1.0, required=True)
     precio = fields.Float(string='Precio', required=True)
     descuento = fields.Float(string='Descuento (Monto)', default=0.0, help='Monto del descuento en valor absoluto')
@@ -358,12 +359,32 @@ class InvoiceImportLine(models.Model):
             # Solo para facturas de cliente (out_invoice) y notas de crédito (out_refund)
             _logger.info("=== INICIO: Crear línea payment_term para factura %s ===", invoice.id)
             if invoice.move_type in ('out_invoice', 'out_refund'):
-                # Obtener la cuenta por cobrar del partner
-                partner = invoice.partner_id.with_company(invoice.company_id)
-                receivable_account = partner.property_account_receivable_id
-                _logger.info("Partner: %s, Receivable account from partner: %s", partner.name, receivable_account.id if receivable_account else 'None')
+                # PRIORIDAD 1: Usar cuenta CxC del Excel si está disponible
+                receivable_account = None
+                if self.cuenta_cxc:
+                    # Buscar la cuenta por código
+                    receivable_account = self.env['account.account'].search([
+                        ('code', '=', self.cuenta_cxc),
+                        ('company_id', '=', self.company_id.id)
+                    ], limit=1)
+                    # Si no se encuentra, intentar con code_store (formato JSON en Odoo 18)
+                    if not receivable_account:
+                        receivable_account = self.env['account.account'].search([
+                            ('code_store->>1', '=', self.cuenta_cxc),
+                            ('company_id', '=', self.company_id.id)
+                        ], limit=1)
+                    if receivable_account:
+                        _logger.info("Cuenta CxC del Excel encontrada: %s (código: %s)", receivable_account.id, self.cuenta_cxc)
+                    else:
+                        _logger.warning("Cuenta CxC del Excel NO encontrada: %s, usando cuenta del partner", self.cuenta_cxc)
                 
-                # Si no tiene cuenta, usar la cuenta por defecto de la compañía
+                # PRIORIDAD 2: Si no hay cuenta del Excel, obtener la cuenta por cobrar del partner
+                if not receivable_account:
+                    partner = invoice.partner_id.with_company(invoice.company_id)
+                    receivable_account = partner.property_account_receivable_id
+                    _logger.info("Partner: %s, Receivable account from partner: %s", partner.name, receivable_account.id if receivable_account else 'None')
+                
+                # PRIORIDAD 3: Si no tiene cuenta, usar la cuenta por defecto de la compañía
                 if not receivable_account:
                     # Buscar cuenta por defecto del tipo asset_receivable
                     receivable_account = self.env['account.account'].search([

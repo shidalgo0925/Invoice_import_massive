@@ -203,10 +203,17 @@
                     </group>
                     
                     <group>
+                        <group string="Cuentas Contables">
+                            <field name="cuenta"/>
+                            <field name="cuenta_cxc"/>
+                        </group>
                         <group string="Impuestos">
                             <field name="impuesto"/>
                             <field name="impuesto_2"/>
                         </group>
+                    </group>
+                    
+                    <group>
                         <group string="Otros">
                             <field name="comentario"/>
                             <field name="error_message" invisible="not error_message"/>
